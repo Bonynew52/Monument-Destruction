@@ -1,38 +1,59 @@
 using UnityEngine;
 
-[RequireComponent(typeof(CharacterController))]
+[RequireComponent(typeof(Rigidbody))]
 public class PlayerMovement : MonoBehaviour
 {
     public float moveSpeed = 5f;
     public float jumpForce = 5f;
-    public float gravity = -9.81f;
+    public float rotationSpeed = 10f;
 
-    private CharacterController controller;
+    private Rigidbody rb;
     private InputHandler inputHandler;
-    private Vector3 velocity;
+    private Transform cameraTransform;
+    private bool jumpQueued;
 
     void Awake()
     {
-        controller = GetComponent<CharacterController>();
+        rb = GetComponent<Rigidbody>();
         inputHandler = GetComponent<InputHandler>();
+        cameraTransform = Camera.main.transform;
+        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
     }
 
     void Update()
     {
-        Vector3 move = new Vector3(inputHandler.MoveInput.x, 0f, inputHandler.MoveInput.y);
-        controller.Move(move * moveSpeed * Time.deltaTime);
-
-        if (controller.isGrounded && velocity.y < 0)
+        if (inputHandler.JumpPressed && IsGrounded())
         {
-            velocity.y = -2f; // small downward force to keep grounded
+            jumpQueued = true;
+        }
+    }
+
+    void FixedUpdate()
+    {
+        Vector3 camForward = cameraTransform.forward;
+        Vector3 camRight = cameraTransform.right;
+        camForward.y = 0f;
+        camRight.y = 0f;
+        camForward.Normalize();
+        camRight.Normalize();
+
+        Vector3 move = camForward * inputHandler.MoveInput.y + camRight * inputHandler.MoveInput.x;
+        if (move.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(move);
+            rb.rotation = Quaternion.Slerp(rb.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime);
+            rb.MovePosition(rb.position + move * moveSpeed * Time.fixedDeltaTime);
         }
 
-        if (inputHandler.JumpPressed && controller.isGrounded)
+        if (jumpQueued)
         {
-            velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            jumpQueued = false;
         }
+    }
 
-        velocity.y += gravity * Time.deltaTime;
-        controller.Move(velocity * Time.deltaTime);
+    bool IsGrounded()
+    {
+        return Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, 0.2f);
     }
 }
